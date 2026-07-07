@@ -26,6 +26,8 @@ export interface SendEventParams {
   description?: string;
   /** Optional HTTPS image URL (passed through to devices; not stored server-side). */
   image_url?: string;
+  /** Optional destination URL (passed through to devices; not stored server-side). */
+  url?: string;
   /** Notification level. Default: `info` */
   level?: NotificationLevel;
   /** iOS delivery urgency. Default: `standard` */

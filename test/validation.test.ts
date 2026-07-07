@@ -61,3 +61,29 @@ describe('validateSendEventParams prohibited fields', () => {
     ).toThrow(ValidationError);
   });
 });
+
+describe('validateSendEventParams url', () => {
+  it('omits url when not provided', () => {
+    const body = validateSendEventParams({ channel: 'general', title: 'x' });
+    expect(body.url).toBeUndefined();
+  });
+
+  it('accepts valid url', () => {
+    const body = validateSendEventParams({
+      channel: 'general',
+      title: 'x',
+      url: 'https://example.com/deployments/42',
+    });
+    expect(body.url).toBe('https://example.com/deployments/42');
+  });
+
+  it('rejects over-length url', () => {
+    expect(() =>
+      validateSendEventParams({
+        channel: 'general',
+        title: 'x',
+        url: `https://example.com/${'a'.repeat(2040)}`,
+      }),
+    ).toThrow(ValidationError);
+  });
+});

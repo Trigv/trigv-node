@@ -10,6 +10,7 @@ const { event, duplicate } = await trigv.sendEvent({
   delivery_urgency: 'standard',
   event_type: 'deploy.completed',
   idempotency_key: 'deploy-prod-42',
+  url: 'https://example.com/deployments/42',
 });
 
 console.log(event.public_id, duplicate ? '(duplicate)' : '(new)');

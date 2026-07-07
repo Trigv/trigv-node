@@ -57,6 +57,7 @@ const { event, duplicate } = await trigv.sendEvent({
 | `title` | Yes | Notification title |
 | `description` | No | Body text |
 | `image_url` | No | HTTPS image URL (not stored server-side) |
+| `url` | No | Destination URL for the notification (max 2048 characters; not stored server-side) |
 | `level` | No | `info`, `success`, `warning`, `error` (default: `info`) |
 | `delivery_urgency` | No | `standard` or `time_sensitive` (default: `standard`) |
 | `event_type` | No | Free-form label (e.g. `deploy.completed`) |
