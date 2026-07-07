@@ -31,8 +31,9 @@ function assertEnum<T extends string>(
 }
 
 export function validateSendEventParams(params: SendEventParams): Record<string, string> {
+  const raw = params as unknown as Record<string, unknown>;
   for (const prohibited of PROHIBITED_FIELDS) {
-    if (prohibited in (params as Record<string, unknown>)) {
+    if (prohibited in raw) {
       throw new ValidationError(`Field "${prohibited}" is not allowed`, {
         [prohibited]: [`The ${prohibited} field is prohibited`],
       });
