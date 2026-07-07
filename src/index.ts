@@ -19,4 +19,5 @@ export type {
   ConnectionResult,
   NotificationLevel,
   DeliveryUrgency,
+  ValidationErrors,
 } from './types.js';

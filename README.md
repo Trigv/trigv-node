@@ -129,11 +129,9 @@ console.log(connection.workspace.name);
 
 See the [`examples/`](./examples/) directory:
 
-- Basic event
-- Deploy completed (canonical example)
-- Cron job failed
-- WooCommerce order notification
-- AI agent task completed
+- Basic event (`basic.ts`)
+- Deploy completed (`deploy-completed.ts`)
+- Cron job failed (`cron-failed.ts`)
 
 ## Development
 
