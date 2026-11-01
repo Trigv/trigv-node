@@ -7,6 +7,8 @@ export {
   AuthorizationError,
   NotFoundError,
   RateLimitError,
+  ConflictError,
+  ServiceUnavailableError,
   ApiError,
   NetworkError,
   TimeoutError,

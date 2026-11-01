@@ -7,7 +7,7 @@ export type DeliveryUrgency = (typeof DELIVERY_URGENCIES)[number];
 export interface TrigvClientOptions {
   /** Workspace ingest API key (`trgv_…`). Falls back to `TRIGV_API_KEY` env var. */
   apiKey?: string;
-  /** API base URL. Default: `https://api.trigv.com/api` */
+  /** API base URL. Default: `https://api.trigv.com`. A base URL ending in `/api` still works. */
   baseUrl?: string;
   /** Request timeout in milliseconds. Default: 30000 */
   timeout?: number;
@@ -41,16 +41,16 @@ export interface SendEventParams {
 export interface Event {
   public_id: string;
   event_uuid: string;
-  status: string;
-  level: string;
+  status: 'pending' | 'sent' | 'failed';
+  level: NotificationLevel;
   event_type: string | null;
   target_device_count: number;
-  received_at: string;
+  received_at: string | null;
 }
 
 export interface SendEventResult {
   event: Event;
-  /** `true` when HTTP 200 — duplicate idempotency key. */
+  /** `true` when HTTP 200 ("already stored") — duplicate idempotency key. */
   duplicate: boolean;
 }
 

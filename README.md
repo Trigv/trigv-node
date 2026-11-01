@@ -53,15 +53,15 @@ const { event, duplicate } = await trigv.sendEvent({
 
 | Field | Required | Description |
 |-------|:--------:|-------------|
-| `channel` | Yes | Channel slug (e.g. `general`) |
-| `title` | Yes | Notification title |
-| `description` | No | Body text |
-| `image_url` | No | HTTPS image URL (not stored server-side) |
+| `channel` | Yes | Channel slug (e.g. `general`, max 120 characters) |
+| `title` | Yes | Notification title (max 255 characters) |
+| `description` | No | Body text (max 1000 characters) |
+| `image_url` | No | Image URL (max 2048 characters; not stored server-side) |
 | `url` | No | Destination URL for the notification (max 2048 characters; not stored server-side) |
 | `level` | No | `info`, `success`, `warning`, `error` (default: `info`) |
 | `delivery_urgency` | No | `standard` or `time_sensitive` (default: `standard`) |
-| `event_type` | No | Free-form label (e.g. `deploy.completed`) |
-| `idempotency_key` | No | Dedup key per workspace |
+| `event_type` | No | Free-form label (e.g. `deploy.completed`, max 120 characters) |
+| `idempotency_key` | No | Dedup key per workspace (max 190 characters) |
 
 ## Levels
 
@@ -77,7 +77,9 @@ const { event, duplicate } = await trigv.sendEvent({
 
 ## Idempotency
 
-When you set `idempotency_key`, retries with the same key return the existing event (`duplicate: true`, HTTP 200) without billing again.
+When you set `idempotency_key`, retries with the same key return the existing event (`duplicate: true`, HTTP 200, message `already stored`) without billing again.
+
+A 409 (another request is delivering the same key) or 503 (push unavailable) is retried automatically with the same key, honouring `Retry-After`.
 
 ```typescript
 await trigv.sendEvent({
@@ -91,9 +93,10 @@ await trigv.sendEvent({
 
 ```typescript
 import {
-  AuthenticationError,
+  ConflictError,
   NotFoundError,
   RateLimitError,
+  ServiceUnavailableError,
   ValidationError,
 } from '@trigv/sdk';
 
@@ -104,18 +107,36 @@ try {
     console.error(error.errors);
   } else if (error instanceof NotFoundError) {
     console.error('Channel not found');
-  } else if (error instanceof RateLimitError) {
-    console.error(error.retryable ? 'Retry later' : 'Monthly limit reached');
+  } else if (
+    error instanceof RateLimitError ||
+    error instanceof ConflictError ||
+    error instanceof ServiceUnavailableError
+  ) {
+    console.error(`Retry in ${(error.retryAfterMs ?? 0) / 1000}s`);
   }
+  // Every API error carries the X-Request-ID header. Quote it to support.
+  console.error((error as { requestId?: string }).requestId);
 }
 ```
+
+| Status | Error | Retried |
+|--------|-------|:-------:|
+| 401 | `AuthenticationError` | No |
+| 403 | `AuthorizationError` | No |
+| 404 | `NotFoundError` | No |
+| 409 | `ConflictError` | Yes, with `idempotency_key` |
+| 422 | `ValidationError` | No |
+| 429 | `RateLimitError` (60 requests per minute per workspace) | Yes, with `idempotency_key` |
+| 503 | `ServiceUnavailableError` | Yes, with `idempotency_key` |
+
+Retries wait for the `Retry-After` header.
 
 ## Configuration
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | `apiKey` | `TRIGV_API_KEY` env | Workspace API key |
-| `baseUrl` | `https://api.trigv.com/api` | API base URL |
+| `baseUrl` | `https://api.trigv.com` | API base URL. A URL ending in `/api` still works |
 | `timeout` | `30000` | Request timeout (ms) |
 | `maxRetries` | `2` | Retries for retryable errors |
 

@@ -1,6 +1,9 @@
 import type { ValidationErrors } from './types.js';
 
 export class TrigvError extends Error {
+  /** Value of the `X-Request-ID` response header, when the API answered. */
+  requestId?: string;
+
   constructor(message: string) {
     super(message);
     this.name = new.target.name;
@@ -43,12 +46,32 @@ export class NotFoundError extends TrigvError {
 
 export class RateLimitError extends TrigvError {
   readonly statusCode = 429;
-  readonly retryable: boolean;
   readonly retryAfterMs?: number;
 
-  constructor(message: string, retryable = true, retryAfterMs?: number) {
+  constructor(message: string, retryAfterMs?: number) {
     super(message);
-    this.retryable = retryable;
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
+/** 409: another request is delivering the same `idempotency_key`. Retry with the same key. */
+export class ConflictError extends TrigvError {
+  readonly statusCode = 409;
+  readonly retryAfterMs?: number;
+
+  constructor(message: string, retryAfterMs?: number) {
+    super(message);
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
+/** 503: push delivery is unavailable. Retry with the same `idempotency_key`. */
+export class ServiceUnavailableError extends TrigvError {
+  readonly statusCode = 503;
+  readonly retryAfterMs?: number;
+
+  constructor(message: string, retryAfterMs?: number) {
+    super(message);
     this.retryAfterMs = retryAfterMs;
   }
 }
@@ -77,8 +100,4 @@ export class TimeoutError extends TrigvError {
   constructor(message = 'Request timed out') {
     super(message);
   }
-}
-
-export function isMonthlyLimitMessage(message: string): boolean {
-  return message.includes('Monthly event limit');
 }

@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { Trigv } from '../src/client.js';
 import {
   AuthenticationError,
+  ConflictError,
   NotFoundError,
   RateLimitError,
+  ServiceUnavailableError,
   ValidationError,
 } from '../src/errors.js';
 
@@ -17,9 +19,9 @@ function mockFetch(handler: (url: string, init?: RequestInit) => Response | Prom
 }
 
 const sampleEvent = {
-  public_id: 'evt_abc',
+  public_id: '01JXXXXXXXXXXXXXXXXXXXXXXX',
   event_uuid: '550e8400-e29b-41d4-a716-446655440000',
-  status: 'queued',
+  status: 'sent',
   level: 'info',
   event_type: null,
   target_device_count: 1,
@@ -46,7 +48,7 @@ describe('Trigv', () => {
     const result = await client.sendEvent({ channel: 'general', title: 'Hello' });
 
     expect(result.duplicate).toBe(false);
-    expect(result.event.public_id).toBe('evt_abc');
+    expect(result.event.public_id).toBe('01JXXXXXXXXXXXXXXXXXXXXXXX');
   });
 
   it('sends all optional fields', async () => {
@@ -104,6 +106,19 @@ describe('Trigv', () => {
     expect(result.duplicate).toBe(true);
   });
 
+  it('maps 200 "already stored" to duplicate', async () => {
+    const fetch = mockFetch(
+      () =>
+        new Response(JSON.stringify({ event: sampleEvent, message: 'already stored' }), {
+          status: 200,
+        }),
+    );
+    const client = new Trigv({ apiKey: API_KEY, fetch, maxRetries: 0 });
+    const result = await client.sendEvent({ channel: 'general', title: 'x', idempotency_key: 'k' });
+    expect(result.duplicate).toBe(true);
+    expect(result.event.public_id).toBe('01JXXXXXXXXXXXXXXXXXXXXXXX');
+  });
+
   it('maps 401 to AuthenticationError', async () => {
     const fetch = mockFetch(
       () => new Response(JSON.stringify({ message: 'Unauthorized' }), { status: 401 }),
@@ -122,20 +137,6 @@ describe('Trigv', () => {
     await expect(client.sendEvent({ channel: 'missing', title: 'x' })).rejects.toThrow(
       NotFoundError,
     );
-  });
-
-  it('distinguishes monthly rate limit as non-retryable', async () => {
-    const fetch = mockFetch(
-      () =>
-        new Response(
-          JSON.stringify({ message: 'Monthly event limit reached for this workspace.' }),
-          { status: 429 },
-        ),
-    );
-    const client = new Trigv({ apiKey: API_KEY, fetch, maxRetries: 2 });
-    await expect(client.sendEvent({ channel: 'general', title: 'x' })).rejects.toMatchObject({
-      retryable: false,
-    });
   });
 
   it('retries burst rate limit when idempotency key set', async () => {
@@ -157,7 +158,7 @@ describe('Trigv', () => {
       idempotency_key: 'k1',
     });
     expect(calls).toBe(2);
-    expect(result.event.public_id).toBe('evt_abc');
+    expect(result.event.public_id).toBe('01JXXXXXXXXXXXXXXXXXXXXXXX');
   });
 
   it('verifyConnection returns metadata', async () => {
@@ -246,25 +247,157 @@ describe('Trigv', () => {
 
     expect(calls).toBe(2);
     expect(secondCallAt - start).toBeGreaterThanOrEqual(900);
-    expect(result.event.public_id).toBe('evt_abc');
+    expect(result.event.public_id).toBe('01JXXXXXXXXXXXXXXXXXXXXXXX');
+  });
+});
+
+describe('base URL', () => {
+  const ok = () => new Response(JSON.stringify({ event: sampleEvent }), { status: 202 });
+
+  it('defaults to https://api.trigv.com/v1/events', async () => {
+    const urls: string[] = [];
+    const fetch = mockFetch((url) => {
+      urls.push(url);
+      return ok();
+    });
+    await new Trigv({ apiKey: API_KEY, fetch }).sendEvent({ channel: 'general', title: 'x' });
+    expect(urls).toEqual(['https://api.trigv.com/v1/events']);
   });
 
-  it('does not retry monthly-cap 429 even with idempotency key', async () => {
+  it('keeps working with the old /api base URL', async () => {
+    const urls: string[] = [];
+    const fetch = mockFetch((url) => {
+      urls.push(url);
+      return ok();
+    });
+    await new Trigv({ apiKey: API_KEY, fetch, baseUrl: 'https://api.trigv.com/api/' }).sendEvent({
+      channel: 'general',
+      title: 'x',
+    });
+    expect(urls).toEqual(['https://api.trigv.com/api/v1/events']);
+  });
+
+  it('builds /v1/connection from the default base URL', async () => {
+    const urls: string[] = [];
+    const fetch = mockFetch((url) => {
+      urls.push(url);
+      return new Response(
+        JSON.stringify({
+          workspace: { public_id: '01JXXXXXXXXXXXXXXXXXXXXXXX', name: 'Acme' },
+          api_key: {
+            public_id: '01JXXXXXXXXXXXXXXXXXXXXXXX',
+            name: 'Prod',
+            prefix: 'trgv_abcd1234',
+          },
+        }),
+        { status: 200 },
+      );
+    });
+    await new Trigv({ apiKey: API_KEY, fetch }).verifyConnection();
+    expect(urls).toEqual(['https://api.trigv.com/v1/connection']);
+  });
+});
+
+describe('error handling', () => {
+  const headers = { 'Retry-After': '7', 'X-Request-ID': '01JREQXXXXXXXXXXXXXXXXXXXX' };
+
+  it('maps 409 to ConflictError with Retry-After and request id', async () => {
+    const fetch = mockFetch(
+      () => new Response(JSON.stringify({ message: 'being delivered' }), { status: 409, headers }),
+    );
+    const client = new Trigv({ apiKey: API_KEY, fetch, maxRetries: 0 });
+    await expect(client.sendEvent({ channel: 'general', title: 'x' })).rejects.toMatchObject({
+      name: 'ConflictError',
+      statusCode: 409,
+      retryAfterMs: 7000,
+      requestId: '01JREQXXXXXXXXXXXXXXXXXXXX',
+    });
+    expect(ConflictError).toBeDefined();
+  });
+
+  it('maps 503 to ServiceUnavailableError with Retry-After', async () => {
+    const fetch = mockFetch(
+      () => new Response(JSON.stringify({ message: 'unavailable' }), { status: 503, headers }),
+    );
+    const client = new Trigv({ apiKey: API_KEY, fetch, maxRetries: 0 });
+    const error = await client
+      .sendEvent({ channel: 'general', title: 'x' })
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ServiceUnavailableError);
+    expect((error as ServiceUnavailableError).retryAfterMs).toBe(7000);
+  });
+
+  it('maps 429 to RateLimitError with Retry-After', async () => {
+    const fetch = mockFetch(
+      () =>
+        new Response(JSON.stringify({ message: 'Too many requests. Try again in 7 seconds.' }), {
+          status: 429,
+          headers,
+        }),
+    );
+    const client = new Trigv({ apiKey: API_KEY, fetch, maxRetries: 0 });
+    const error = await client
+      .sendEvent({ channel: 'general', title: 'x' })
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(RateLimitError);
+    expect((error as RateLimitError).retryAfterMs).toBe(7000);
+    expect((error as RateLimitError).requestId).toBe('01JREQXXXXXXXXXXXXXXXXXXXX');
+  });
+
+  it('maps 422 (bad JSON body) to ValidationError', async () => {
+    const fetch = mockFetch(
+      () =>
+        new Response(
+          JSON.stringify({
+            message: 'The channel field is required. (and 1 more error)',
+            errors: { channel: ['The channel field is required.'], title: ['x'] },
+          }),
+          { status: 422 },
+        ),
+    );
+    const client = new Trigv({ apiKey: API_KEY, fetch, maxRetries: 2 });
+    const error = await client
+      .sendEvent({ channel: 'general', title: 'x' })
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ValidationError);
+    expect((error as ValidationError).errors.channel).toBeDefined();
+  });
+
+  it.each([
+    [409, 'ConflictError'],
+    [503, 'ServiceUnavailableError'],
+  ])('retries %i with the same idempotency key after Retry-After', async (status) => {
+    const bodies: string[] = [];
+    let calls = 0;
+    const start = Date.now();
+    const fetch = mockFetch((_url, init) => {
+      calls += 1;
+      bodies.push(String(init?.body));
+      if (calls === 1) {
+        return new Response(JSON.stringify({ message: 'retry' }), {
+          status,
+          headers: { 'Retry-After': '1' },
+        });
+      }
+      return new Response(JSON.stringify({ event: sampleEvent }), { status: 202 });
+    });
+    const client = new Trigv({ apiKey: API_KEY, fetch, maxRetries: 2 });
+    await client.sendEvent({ channel: 'general', title: 'x', idempotency_key: 'k1' });
+    expect(calls).toBe(2);
+    expect(Date.now() - start).toBeGreaterThanOrEqual(900);
+    expect(bodies[0]).toBe(bodies[1]);
+  });
+
+  it('does not retry 409 without an idempotency key', async () => {
     let calls = 0;
     const fetch = mockFetch(() => {
       calls += 1;
-      return new Response(
-        JSON.stringify({ message: 'Monthly event limit reached for this workspace.' }),
-        { status: 429, headers: { 'Retry-After': '60' } },
-      );
+      return new Response(JSON.stringify({ message: 'busy' }), { status: 409 });
     });
-
     const client = new Trigv({ apiKey: API_KEY, fetch, maxRetries: 2 });
-    await expect(
-      client.sendEvent({ channel: 'general', title: 'x', idempotency_key: 'k1' }),
-    ).rejects.toSatisfy((error: unknown) => {
-      return error instanceof RateLimitError && error.retryable === false;
-    });
+    await expect(client.sendEvent({ channel: 'general', title: 'x' })).rejects.toBeInstanceOf(
+      ConflictError,
+    );
     expect(calls).toBe(1);
   });
 });

@@ -3,11 +3,13 @@ import {
   ApiError,
   AuthenticationError,
   AuthorizationError,
-  isMonthlyLimitMessage,
+  ConflictError,
   NetworkError,
   NotFoundError,
   RateLimitError,
+  ServiceUnavailableError,
   TimeoutError,
+  TrigvError,
   ValidationError,
 } from './errors.js';
 import { parseRetryAfterHeader, retryBackoffMs, sleep } from './retry.js';
@@ -39,41 +41,60 @@ function parseJson(text: string): JsonBody | null {
   }
 }
 
-function errorFromResponse(status: number, body: JsonBody | null): never {
-  const message = body?.message ?? `Trigv API returned HTTP ${status}`;
-
-  switch (status) {
-    case 401:
-      throw new AuthenticationError(message);
-    case 403:
-      throw new AuthorizationError(message);
-    case 404:
-      throw new NotFoundError(message);
-    case 422:
-      throw new ValidationError(message, body?.errors ?? {});
-    case 429:
-      throw new RateLimitError(message, !isMonthlyLimitMessage(message));
-    default:
-      throw new ApiError(message, status, body);
-  }
-}
-
-function httpErrorFromResponse(
+function errorFromResponse(
   status: number,
   body: JsonBody | null,
-  retryAfterHeader: string | null,
+  retryAfterHeader: string | null = null,
+  requestId: string | null = null,
 ): never {
-  if (status === 429) {
-    const message = body?.message ?? `Trigv API returned HTTP ${status}`;
-    const retryAfterMs = parseRetryAfterHeader(retryAfterHeader);
-    throw new RateLimitError(message, !isMonthlyLimitMessage(message), retryAfterMs);
-  }
+  const message = body?.message ?? `Trigv API returned HTTP ${status}`;
+  const retryAfterMs = parseRetryAfterHeader(retryAfterHeader);
 
-  errorFromResponse(status, body);
+  let error: TrigvError;
+  switch (status) {
+    case 401:
+      error = new AuthenticationError(message);
+      break;
+    case 403:
+      error = new AuthorizationError(message);
+      break;
+    case 404:
+      error = new NotFoundError(message);
+      break;
+    case 409:
+      error = new ConflictError(message, retryAfterMs);
+      break;
+    case 422:
+      error = new ValidationError(message, body?.errors ?? {});
+      break;
+    case 429:
+      error = new RateLimitError(message, retryAfterMs);
+      break;
+    case 503:
+      error = new ServiceUnavailableError(message, retryAfterMs);
+      break;
+    default:
+      error = new ApiError(message, status, body);
+  }
+  if (requestId) {
+    error.requestId = requestId;
+  }
+  throw error;
 }
 
 function isRetryableStatus(status: number): boolean {
-  return status === 429 || status === 502 || status === 503 || status === 504;
+  return status === 502 || status === 504;
+}
+
+function retryAfterOf(error: unknown): number | undefined {
+  if (
+    error instanceof RateLimitError ||
+    error instanceof ConflictError ||
+    error instanceof ServiceUnavailableError
+  ) {
+    return error.retryAfterMs;
+  }
+  return undefined;
 }
 
 export class Trigv {
@@ -164,31 +185,18 @@ export class Trigv {
           throw error;
         }
 
-        if (error instanceof ValidationError || error instanceof AuthenticationError) {
-          throw error;
-        }
-        if (error instanceof AuthorizationError || error instanceof NotFoundError) {
-          throw error;
-        }
-        if (error instanceof RateLimitError && !error.retryable) {
-          throw error;
-        }
-        if (error instanceof ApiError && !isRetryableStatus(error.statusCode)) {
-          throw error;
-        }
-        if (error instanceof NetworkError || error instanceof TimeoutError) {
-          // retry
-        } else if (
-          !(error instanceof RateLimitError) &&
-          !(error instanceof ApiError && isRetryableStatus(error.statusCode))
-        ) {
+        const retryable =
+          error instanceof NetworkError ||
+          error instanceof TimeoutError ||
+          error instanceof RateLimitError ||
+          error instanceof ConflictError ||
+          error instanceof ServiceUnavailableError ||
+          (error instanceof ApiError && isRetryableStatus(error.statusCode));
+        if (!retryable) {
           throw error;
         }
 
-        let waitMs = retryBackoffMs(attempt);
-        if (error instanceof RateLimitError && error.retryAfterMs !== undefined) {
-          waitMs = error.retryAfterMs;
-        }
+        const waitMs = retryAfterOf(error) ?? retryBackoffMs(attempt);
 
         const waitAbort = new AbortController();
         const waitTimeout = setTimeout(() => waitAbort.abort(new TimeoutError()), this.timeout);
@@ -238,18 +246,20 @@ export class Trigv {
         return parseSuccess(response.status, parsed);
       }
 
-      httpErrorFromResponse(response.status, parsed, response.headers.get('Retry-After'));
+      errorFromResponse(
+        response.status,
+        parsed,
+        response.headers.get('Retry-After'),
+        response.headers.get('X-Request-ID'),
+      );
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         throw new TimeoutError();
       }
       if (
-        error instanceof ValidationError ||
-        error instanceof AuthenticationError ||
-        error instanceof AuthorizationError ||
-        error instanceof NotFoundError ||
-        error instanceof RateLimitError ||
-        error instanceof ApiError
+        error instanceof TrigvError &&
+        !(error instanceof NetworkError) &&
+        !(error instanceof TimeoutError)
       ) {
         throw error;
       }
