@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rate limit is 60 requests per minute per workspace.
 - Invalid JSON bodies return 422 and map to `ValidationError`.
 
+### Fixed
+
+- A retry wait is no longer cut short by a request timeout shorter than the backoff (it used to throw `TimeoutError` instead of retrying). Backoff is capped at 8 seconds.
+- `Retry-After` accepts fractional seconds.
+- `null` optional fields are treated as omitted; non-string values throw `ValidationError` instead of a `TypeError`.
+
 ### Added
 
 - `ConflictError` (409) and `ServiceUnavailableError` (503), both retryable with `Retry-After` when an `idempotency_key` is set.

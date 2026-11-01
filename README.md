@@ -77,9 +77,9 @@ const { event, duplicate } = await trigv.sendEvent({
 
 ## Idempotency
 
-When you set `idempotency_key`, retries with the same key return the existing event (`duplicate: true`, HTTP 200, message `already stored`) without billing again.
+When you set `idempotency_key`, retries with the same key return the existing event (`duplicate: true`, HTTP 200, message `already stored`) without sending it again.
 
-A 409 (another request is delivering the same key) or 503 (push unavailable) is retried automatically with the same key, honouring `Retry-After`.
+A 409 (another request is delivering the same key), 429, 502, 503 (push unavailable) or 504, a network error or a timeout is retried automatically with the same key, honouring `Retry-After`.
 
 ```typescript
 await trigv.sendEvent({

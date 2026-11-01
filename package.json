@@ -47,6 +47,10 @@
     "type": "git",
     "url": "https://github.com/Trigv/trigv-node.git"
   },
+  "homepage": "https://github.com/Trigv/trigv-node#readme",
+  "bugs": {
+    "url": "https://github.com/Trigv/trigv-node/issues"
+  },
   "devDependencies": {
     "@eslint/js": "^9.28.0",
     "@types/node": "^22.15.29",
