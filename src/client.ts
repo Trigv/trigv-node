@@ -142,11 +142,11 @@ export class Trigv {
       '/v1/events',
       body,
       hasIdempotency,
-      (status, parsed) => {
+      (status, parsed, requestId) => {
         if ((status === 202 || status === 200) && parsed?.event) {
-          return { event: parsed.event, duplicate: status === 200 };
+          return { event: parsed.event, duplicate: status === 200, requestId };
         }
-        errorFromResponse(status, parsed);
+        errorFromResponse(status, parsed, null, requestId ?? null);
       },
     );
   }
@@ -157,11 +157,11 @@ export class Trigv {
       '/v1/connection',
       undefined,
       true,
-      (status, parsed) => {
+      (status, parsed, requestId) => {
         if (status === 200 && parsed?.workspace && parsed?.api_key) {
-          return { workspace: parsed.workspace, api_key: parsed.api_key };
+          return { workspace: parsed.workspace, api_key: parsed.api_key, requestId };
         }
-        errorFromResponse(status, parsed);
+        errorFromResponse(status, parsed, null, requestId ?? null);
       },
     );
   }
@@ -171,7 +171,7 @@ export class Trigv {
     path: string,
     body: Record<string, string> | undefined,
     allowRetry: boolean,
-    parseSuccess: (status: number, parsed: JsonBody | null) => T,
+    parseSuccess: (status: number, parsed: JsonBody | null, requestId: string | undefined) => T,
   ): Promise<T> {
     let lastError: unknown;
 
@@ -214,7 +214,7 @@ export class Trigv {
     method: 'GET' | 'POST',
     path: string,
     body: Record<string, string> | undefined,
-    parseSuccess: (status: number, parsed: JsonBody | null) => T,
+    parseSuccess: (status: number, parsed: JsonBody | null, requestId: string | undefined) => T,
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const controller = new AbortController();
@@ -237,7 +237,11 @@ export class Trigv {
       const parsed = parseJson(text);
 
       if (response.ok) {
-        return parseSuccess(response.status, parsed);
+        return parseSuccess(
+          response.status,
+          parsed,
+          response.headers.get('X-Request-ID') || undefined,
+        );
       }
 
       errorFromResponse(

@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `ConflictError` (409) and `ServiceUnavailableError` (503), both retryable with `Retry-After` when an `idempotency_key` is set.
 - `requestId` on every API error (from the `X-Request-ID` header).
+- `requestId` (optional, readonly) on the results of `sendEvent()` and `verifyConnection()`, from the `X-Request-ID` header; `undefined` when the header is missing.
 - When `Retry-After` is longer than the request timeout, the original 409, 429 or 503 error is thrown at once instead of waiting.
 
 ### Removed

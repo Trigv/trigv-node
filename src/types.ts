@@ -52,6 +52,8 @@ export interface SendEventResult {
   event: Event;
   /** `true` when HTTP 200 ("already stored"), duplicate idempotency key. */
   duplicate: boolean;
+  /** Value of the `X-Request-ID` response header. `undefined` when the header is missing. */
+  readonly requestId?: string;
 }
 
 export interface ConnectionWorkspace {
@@ -68,6 +70,8 @@ export interface ConnectionApiKey {
 export interface ConnectionResult {
   workspace: ConnectionWorkspace;
   api_key: ConnectionApiKey;
+  /** Value of the `X-Request-ID` response header. `undefined` when the header is missing. */
+  readonly requestId?: string;
 }
 
 export interface ValidationErrors {

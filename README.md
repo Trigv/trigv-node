@@ -49,6 +49,8 @@ const { event, duplicate } = await trigv.sendEvent({
 });
 ```
 
+Successful results also carry `requestId`, the value of the `X-Request-ID` response header (`undefined` if the header is missing). It is the same id that API errors expose, so you can quote it to support for either case.
+
 ## Event options
 
 | Field | Required | Description |
@@ -146,6 +148,7 @@ Network errors and timeouts are retried the same way. `verifyConnection()` (`GET
 ```typescript
 const connection = await trigv.verifyConnection();
 console.log(connection.workspace.name);
+console.log(connection.requestId); // X-Request-ID, or undefined
 ```
 
 ## Examples
