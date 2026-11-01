@@ -128,8 +128,9 @@ try {
 | 422 | `ValidationError` | No |
 | 429 | `RateLimitError` (60 requests per minute per workspace) | Yes, with `idempotency_key` |
 | 503 | `ServiceUnavailableError` | Yes, with `idempotency_key` |
+| 502, 504 | `ApiError` | Yes, with `idempotency_key` |
 
-Retries wait for the `Retry-After` header.
+Network errors and timeouts are retried the same way. `verifyConnection()` (`GET /v1/connection`) is always retried, because it is safe to repeat. Retries wait for the `Retry-After` header. If `Retry-After` is longer than the request timeout, the original error is thrown at once, without waiting.
 
 ## Configuration
 

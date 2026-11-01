@@ -50,7 +50,7 @@ export interface Event {
 
 export interface SendEventResult {
   event: Event;
-  /** `true` when HTTP 200 ("already stored") — duplicate idempotency key. */
+  /** `true` when HTTP 200 ("already stored"), duplicate idempotency key. */
   duplicate: boolean;
 }
 

@@ -12,6 +12,7 @@ export {
   ApiError,
   NetworkError,
   TimeoutError,
+  isMonthlyLimitMessage,
 } from './errors.js';
 export type {
   TrigvClientOptions,
