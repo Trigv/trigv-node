@@ -1,5 +1,7 @@
 # @trigv/sdk
 
+[Docs](https://trigv.com/docs/sdks/javascript/) | [API reference](https://trigv.com/docs/api/) | [Free tools](https://trigv.com/tools/) | [Get an API key](https://app.trigv.com/register)
+
 Official Trigv SDK for Node.js and TypeScript. Send notification events from scripts, servers, and CI pipelines.
 
 ## What Trigv is

@@ -1,6 +1,6 @@
 {
   "name": "@trigv/sdk",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Official Trigv SDK for Node.js — send notification events to your workspace",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -47,7 +47,7 @@
     "type": "git",
     "url": "https://github.com/Trigv/trigv-node.git"
   },
-  "homepage": "https://github.com/Trigv/trigv-node#readme",
+  "homepage": "https://trigv.com/docs/sdks/javascript/",
   "bugs": {
     "url": "https://github.com/Trigv/trigv-node/issues"
   },
